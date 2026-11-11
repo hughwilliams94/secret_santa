@@ -11,7 +11,7 @@ A small, self-hosted Secret Santa web app for a family get-together.
 
 ## Running it
 
-Requires Node.js 20 or newer.
+Requires Node.js 20 or newer. To host it on a server, see [Deploying on a VPS](#deploying-on-a-vps-with-rootless-podman-and-quadlet).
 
 ```bash
 npm install
@@ -32,27 +32,84 @@ Data is stored in `data/db.json`. Set `DATA_FILE` to put it somewhere else.
 
 ## Configuration
 
-Settings come from environment variables. See `.env.example`. With Node 20.6+ you can run:
-
-```bash
-cp .env.example .env   # then edit it
-node --env-file=.env server.js
-```
+All settings come from environment variables:
 
 | Variable | Purpose |
 | --- | --- |
-| `PORT` | Port to listen on (default 3000) |
-| `BASE_URL` | Public address of the site, used in the links in emails. Set this when hosting. |
-| `ADMIN_TOKEN` | Fixes the organiser link. If unset, a random one is generated once and saved. |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | Email settings. Email is off unless `SMTP_HOST` is set. |
+| `BASE_URL` | Public address of the site, e.g. `https://santa.example.com`. Used in links and emails. |
+| `ADMIN_TOKEN` | Fixes the organiser link. If unset, a random one is generated on first start, saved and printed in the logs. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | Email. Email is off unless `SMTP_HOST` is set. Port 465 uses TLS, and 587 uses STARTTLS. |
+| `PORT`, `DATA_FILE` | Listen port (default 3000) and data file (default `data/db.json`, `/data/db.json` in the container). |
 
-### Email with Gmail
+On startup the app logs into the SMTP server and prints `SMTP login OK` or the error, so you can spot email problems straight away.
 
-Turn on 2-step verification for the account, create an [App Password](https://myaccount.google.com/apppasswords), then use `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_USER=<your address>` and `SMTP_PASS=<the app password>`. Any other SMTP provider works too (Brevo, Mailgun, Fastmail, your ISP and so on).
+To run locally: `cp .env.example .env`, edit it, then run `node --env-file=.env server.js`.
 
-## Hosting
+## Deploying on a VPS with rootless Podman and Quadlet
 
-Any host that runs a Node app with a persistent disk will work: a Raspberry Pi at home, a small VPS, Render, Railway or Fly.io. Mount a volume for `data/`, or the draw is lost on redeploy. Use HTTPS so the personal links aren't sent in plain text.
+The `deploy/` folder has a Quadlet unit, a named volume for the data, and an example environment file. Everything below runs as your normal user (no `sudo`) unless shown.
+
+### 1. Fastmail app password
+
+Fastmail needs an app password for SMTP. Your normal password won't work. In Fastmail, go to **Settings → Privacy & Security → Manage app passwords and access → New app password**, and choose access to **SMTP**. Store it as a Podman secret so it never sits in a file:
+
+```bash
+printf '%s' 'your-app-password' | podman secret create secret-santa-smtp-pass -
+```
+
+`MAIL_FROM` must be your Fastmail address or one of your aliases or domains, or Fastmail will reject the message.
+
+### 2. Build the image
+
+```bash
+git clone <this repo> ~/secret_santa && cd ~/secret_santa
+podman build -t localhost/secret-santa:latest -f Containerfile .
+```
+
+### 3. Install the Quadlet units and config
+
+```bash
+mkdir -p ~/.config/containers/systemd ~/.config/secret-santa
+cp deploy/secret-santa.container deploy/secret-santa-data.volume ~/.config/containers/systemd/
+cp deploy/secret-santa.env.example ~/.config/secret-santa/secret-santa.env
+chmod 600 ~/.config/secret-santa/secret-santa.env
+$EDITOR ~/.config/secret-santa/secret-santa.env   # BASE_URL, SMTP_USER, MAIL_FROM
+```
+
+### 4. Start it
+
+```bash
+sudo loginctl enable-linger "$USER"   # once: keeps your user services running after you log out
+systemctl --user daemon-reload
+systemctl --user start secret-santa
+journalctl --user -u secret-santa     # shows the organiser link and "SMTP login OK"
+```
+
+Quadlet units are generated rather than "enabled". The `[Install]` section starts the service at boot, as long as linger is on.
+
+### 5. HTTPS in front
+
+The container listens only on `127.0.0.1:3000`. Put a reverse proxy in front of it. With Caddy, this gets a certificate automatically:
+
+```
+santa.example.com {
+    reverse_proxy 127.0.0.1:3000
+}
+```
+
+### Updating
+
+```bash
+cd ~/secret_santa && git pull
+podman build -t localhost/secret-santa:latest -f Containerfile .
+systemctl --user restart secret-santa
+```
+
+Data lives in the `secret-santa-data` volume, so rebuilding and restarting is safe. To back it up, run:
+
+```bash
+podman volume export secret-santa-data > secret-santa-backup.tar
+```
 
 ## How the draw works
 

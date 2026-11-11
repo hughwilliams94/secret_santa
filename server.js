@@ -9,6 +9,8 @@ const { draw } = require('./lib/draw');
 const PORT = Number(process.env.PORT || 3000);
 const app = express();
 app.disable('x-powered-by');
+// Behind a reverse proxy (Caddy/nginx) on the same host: trust its X-Forwarded-* headers.
+app.set('trust proxy', process.env.TRUST_PROXY || 'loopback');
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -40,6 +42,8 @@ async function emailAssignment(req, giver) {
   }
   return sent;
 }
+
+app.get('/healthz', (req, res) => res.type('text').send('ok'));
 
 // ---------- Home ----------
 app.get('/', (req, res) => res.send(views.home()));
@@ -229,9 +233,22 @@ personRouter.post('/wishlist', (req, res) => {
 
 app.use((req, res) => res.status(404).send(views.notFound()));
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   const base = (process.env.BASE_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
   console.log(`🎅 Secret Santa running on port ${PORT}`);
   console.log(`   Organiser page: ${base}/admin/${db.adminToken}`);
-  console.log(`   Email: ${mail.enabled ? 'enabled' : 'disabled (set SMTP_HOST to enable)'}`);
+  console.log(`   Email: ${mail.enabled ? `enabled via ${process.env.SMTP_HOST}` : 'disabled (set SMTP_HOST to enable)'}`);
+  mail.verify().then(
+    (ok) => ok && console.log('   SMTP login OK'),
+    (e) => console.error(`   SMTP check failed: ${e.message}`),
+  );
 });
+
+// Podman/systemd stop the container with SIGTERM.
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, () => {
+    console.log(`Received ${sig}, shutting down`);
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 5000).unref();
+  });
+}
