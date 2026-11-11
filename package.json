@@ -1,0 +1,27 @@
+{
+  "name": "secret_santa",
+  "version": "1.0.0",
+  "description": "A simple family Secret Santa web app with exclusions, personal links and email",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hughwilliams94/secret_santa.git"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/hughwilliams94/secret_santa/issues"
+  },
+  "homepage": "https://github.com/hughwilliams94/secret_santa#readme",
+  "dependencies": {
+    "express": "^4.22.3",
+    "nodemailer": "^10.5.0"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  }
+}
