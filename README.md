@@ -65,3 +65,9 @@ npm test
 ## Security notes
 
 The personal links are the only "password". They're long and random, and pages are marked `noindex`. Anyone with someone's link can see who that person drew, so send each link only to its owner. Keep the organiser link to yourself.
+
+## Claude Artifact version
+
+`artifact/secret-santa.html` is a version that runs as a Claude Artifact on claude.ai, so there's nothing to host. Family members sign in to claude.ai, so it uses each person's account in place of secret links. They open the page once and pick their name. The artifact's database rules mean each person can only read their own pick. Only the organiser (the artifact's owner) can change the event or run the draw. The page never shows the organiser who drew whom.
+
+Differences from the Node app: it doesn't send email, and everyone needs a claude.ai account with the artifact shared to them as a **Contributor**.
